@@ -214,6 +214,7 @@ const promptOpts = (path: string): Array<{ label: string; pattern?: string }> =>
   const cs = candidates(path);
   const opts: Array<{ label: string; pattern?: string }> = [];
   for (const c of cs) opts.push({ label: `[${c.label}] ${c.display}`, pattern: c.pattern });
+  opts.push({ label: "Custom pattern" });
   opts.push({ label: "Allow this once only" });
   opts.push({ label: "Block" });
   return opts;
@@ -428,6 +429,18 @@ export default function (pi: ExtensionAPI) {
     }
 
     if (choice === "Allow this once only") {
+      return undefined;
+    }
+
+    if (choice === "Custom pattern") {
+      const pattern = await ctx.ui.input("Pattern (use <?> for segment, <?*> for rest):", path);
+      if (!pattern) return undefined; // cancelled or empty — just allow once
+      const label = `[Custom] ${pattern}`;
+      const c = load();
+      const rule: Rule = { id: c.nextId++, pattern, label };
+      c.rules.push(rule);
+      save(c);
+      ctx.ui.notify(`✅ Rule #${rule.id} saved: ${label}`, "success");
       return undefined;
     }
 
