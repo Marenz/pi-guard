@@ -65,40 +65,45 @@ const patternToRe = (pattern: string): RegExp => {
   return new RegExp(`^${reStr}$`);
 };
 
+// Shorten a path by replacing the common prefix with …
+// show shows how many trailing segments to keep visible
+const shorten = (path: string, show: number): string => {
+  const parts = path.split("/").filter(Boolean);
+  if (parts.length <= show) return path;
+  return "…/" + parts.slice(-show).join("/");
+};
+
 // Generate candidate patterns from a concrete path
-const candidates = (path: string): Array<{ label: string; pattern: string }> => {
+const candidates = (path: string): Array<{ label: string; pattern: string; display: string }> => {
   const parts = path.replace(/^~/, homedir()).split("/").filter(Boolean);
-  const result: Array<{ label: string; pattern: string }> = [];
+  const result: Array<{ label: string; pattern: string; display: string }> = [];
 
   // Exact path
-  result.push({ label: "Exact", pattern: path });
+  result.push({ label: "Exact", pattern: path, display: shorten(path, 2) });
 
   // One-level wildcard (last component -> <?>)
   if (parts.length > 1) {
     const parent = parts.slice(0, -1).join("/");
-    // Strip leading / if we reconstruct
-    result.push({
-      label: "Directory",
-      pattern: path.startsWith("/") ? `/${parent}/<?>` : `${parent}/<?>`,
-    });
+    const fp = path.startsWith("/") ? `/${parent}/<?>` : `${parent}/<?>`;
+    // Show last 2 meaningful parts + <?>
+    const tail = [...parts.slice(-1), "<?>"];
+    result.push({ label: "Directory", pattern: fp, display: "…/" + tail.join("/") });
   }
 
   // Full tree under parent
   if (parts.length > 1) {
     const parent = parts.slice(0, -1).join("/");
-    result.push({
-      label: "Tree",
-      pattern: path.startsWith("/") ? `/${parent}/<?*>` : `${parent}/<?*>`,
-    });
+    const fp = path.startsWith("/") ? `/${parent}/<?*>` : `${parent}/<?*>`;
+    const tail = [...parts.slice(-1), "<?*>"];
+    result.push({ label: "Tree", pattern: fp, display: "…/" + tail.join("/") });
   }
 
   // Full tree under grandparent
   if (parts.length > 2) {
     const gp = parts.slice(0, -2).join("/");
-    result.push({
-      label: "Broad",
-      pattern: path.startsWith("/") ? `/${gp}/<?*>` : `${gp}/<?*>`,
-    });
+    const fp = path.startsWith("/") ? `/${gp}/<?*>` : `${gp}/<?*>`;
+    const tail = [...parts.slice(-2), "<?*>"];
+    result.push({ label: "Broad", pattern: fp, display: "…/" + tail.join("/") });
   }
 
   return result;
@@ -208,7 +213,7 @@ const choiceLabels = [
 const promptOpts = (path: string): Array<{ label: string; pattern?: string }> => {
   const cs = candidates(path);
   const opts: Array<{ label: string; pattern?: string }> = [];
-  for (const c of cs) opts.push({ label: `[${c.label}] ${c.pattern}`, pattern: c.pattern });
+  for (const c of cs) opts.push({ label: `[${c.label}] ${c.display}`, pattern: c.pattern });
   opts.push({ label: "Allow this once only" });
   opts.push({ label: "Block" });
   return opts;
@@ -404,12 +409,14 @@ export default function (pi: ExtensionAPI) {
     // For simplicity, prompt on the first unknown path
     const path = unknownPaths[0];
     const opts = promptOpts(path);
+    const parts = path.split("/").filter(Boolean);
+    const prefix = parts.length > 2 ? parts.slice(0, -2).join("/") : "";
     const choice = await ctx.ui.select(
       [
         `🌐 ${remote.tool.toUpperCase()} to ${remote.host}`,
         `Command: ${remote.cmd}`,
         ``,
-        `Accessing path: ${path}`,
+        `Path: ${path}`,
         ``,
         `Choose how to remember this:`,
       ].join("\n"),
