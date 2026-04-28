@@ -168,16 +168,18 @@ const parseRemote = (raw: string): Remote | null => {
 };
 
 // Extract file paths from a remote command string
-// Looks for path-like arguments (starts with /, ~/, or ./)
+// Looks for /... and ~/... tokens, even inside quoted strings
 const extractPaths = (cmd: string): string[] => {
-  // Split on whitespace respecting quotes
-  const tokens = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
+  // Find all absolute/relative paths in the command
+  const re = /(?:^|\s)(\/[^\s"'|;&$()]+|~\/[^\s"'|;&$()]+|\.\/[^\s"'|;&$()]+)/g;
   const paths: string[] = [];
-  for (const t of tokens) {
-    const cleaned = t.replace(/^["']|["']$/g, "");
-    // Looks like a path
-    if (cleaned.startsWith("/") || cleaned.startsWith("~/") || cleaned.startsWith("./")) {
-      paths.push(cleaned);
+  const seen = new Set<string>();
+  let m;
+  while ((m = re.exec(cmd)) !== null) {
+    const p = m[1].replace(/["']$/, ""); // strip trailing quote if any
+    if (!seen.has(p)) {
+      seen.add(p);
+      paths.push(p);
     }
   }
   return paths;
